@@ -2,10 +2,20 @@ exception Not_implemented
 
 type 'a tree = Leaf of 'a | Node of 'a tree * 'a * 'a tree
 
-let rec sum _ = raise Not_implemented
-let rec power _ _ = raise Not_implemented
-let rec gcd _ _ = raise Not_implemented
-let rec combi _ _ = raise Not_implemented
+let rec sum n = 
+  if n = 1 then 1
+  else sum(n - 1) + n
+let rec power x n = 
+  if n = 0 then 1
+  else power x (n - 1) * x
+let rec gcd m n = 
+  if m = 0 then n
+  else if n = 0 then m
+  else if m > n then gcd (m mod n) n
+  else gcd (n mod m) m
+let rec combi n k = 
+  if k = 0 || k = n then 1
+  else combi (n - 1) (k - 1) + combi (n - 1) k
 
 let rec sum_tree _ = raise Not_implemented
 let rec depth _ = raise Not_implemented
