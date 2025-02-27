@@ -100,6 +100,15 @@ let rec split l =
   match l with
   | [] -> ([], [])
   | [x] -> ([x], [])
-  | h :: t -> raise Not_implemented
-let rec cartprod _ _ = raise Not_implemented
-let rec powerset _ = raise Not_implemented
+  | h :: m :: t -> 
+    let a, b = split t in
+    (h :: a, m :: b)
+let rec cartprod s t =
+  match s with
+  | [] -> []
+  | h1 :: t1 -> lmap (fun x -> (h1, x)) t @ cartprod t1 t
+let rec powerset s = 
+  match s with
+  | [] -> [[]]
+  | [a] -> [] :: [[a]]
+  | h :: t -> lmap (fun x -> h :: x) (powerset t) @ powerset t
