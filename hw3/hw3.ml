@@ -81,21 +81,52 @@ end
 module MatrixFn (Scal : SCALAR) : MATRIX with type elem = Scal.t
 =
 struct
+  module V = VectorFn(Scal)
+
   type elem = Scal.t
-  type t = unit
+  type t = V.t list
 
   exception MatrixIllegal
 
-  let create _ = raise NotImplemented
-  let identity _ = raise NotImplemented
-  let dim _ = raise NotImplemented
-  let transpose _ = raise NotImplemented
-  let to_list _ = raise NotImplemented
-  let get _ _ _ = raise NotImplemented 
-
-  let (++) _ _ = raise NotImplemented
-  let ( ** ) _ _ = raise NotImplemented
-  let (==) _ _ = raise NotImplemented
+  let create ll = 
+    let dim = List.length ll in
+    if dim == 0 || List.exists (fun x -> dim != List.length x) ll then raise MatrixIllegal
+    else
+     List.map (V.create) ll
+  let identity d = 
+    if d <= 0 then raise MatrixIllegal
+    else
+      let make_row i = 
+        let elements = List.init d (fun x -> if x != i then Scal.zero else Scal.one) in V.create elements
+      in
+      List.init d make_row
+  let dim m = List.length m
+  let transpose m = 
+    if m = [] then raise MatrixIllegal
+    else
+      let col_cnt = V.dim (List.hd m) in
+      let get_col j = 
+        V.create (List.map (fun v -> V.nth v j) m) in
+      List.init col_cnt get_col
+  let to_list m = List.map V.to_list m
+  let get m r c = 
+    if r >= dim m || r < 0 || c >= dim m || c < 0 then raise MatrixIllegal
+    else V.nth (List.nth m r) c
+  let (++) m n =
+    if dim m != dim n then raise MatrixIllegal
+    else List.map2 V.(++) m n
+  let ( ** ) m n = 
+    if dim m != dim n then raise MatrixIllegal
+    else 
+      let n_t = transpose n in
+      let row_cnt = dim m in
+      let get_row i = 
+        V.create (List.map (fun n_col -> V.innerp (List.nth m i) n_col) n_t) in
+      List.init row_cnt get_row
+  let (==) m n = 
+    if dim m != dim n then raise MatrixIllegal
+    else 
+      List.for_all (fun x -> x) (List.map2 V.(==) m n)
 end
 
 (* Problem 2-1 *)
