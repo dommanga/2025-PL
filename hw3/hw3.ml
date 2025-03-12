@@ -138,7 +138,16 @@ sig
 end
 =
 struct
-  let closure _ = raise NotImplemented
+  let closure m = 
+    let dim_m = Mat.dim m in
+    let identity = Mat.identity dim_m in
+    let rec closure_aux cur = 
+      let ind_closure = Mat.(++) identity (Mat.( ** ) cur m) 
+    in
+      if Mat.(==) cur ind_closure then cur
+      else closure_aux ind_closure
+    in
+    closure_aux identity
 end
 
 (* Problem 2-2 *)
