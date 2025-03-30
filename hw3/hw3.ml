@@ -156,7 +156,11 @@ end
 module BoolMat = MatrixFn (Boolean)
 module BoolMatClosure = ClosureFn (BoolMat)
 
-let reach _ = raise NotImplemented
+let reach m = 
+  try
+    BoolMat.to_list (BoolMatClosure.closure (BoolMat.create m))
+  with
+    BoolMat.MatrixIllegal -> raise IllegalFormat
 
 let al = 
   [[true;  false; false; false; false; false];
@@ -181,17 +185,31 @@ struct
 
   exception ScalarIllegal
 
-  let zero = 999999              (* Dummy value : Rewrite it! *)
-  let one = 999999               (* Dummy value : Rewrite it! *)
+  let zero = -1         (* Dummy value : Rewrite it! *)
+  let one = 0               (* Dummy value : Rewrite it! *)
 
-  let (++) _ _ = raise NotImplemented
-  let ( ** ) _ _ = raise NotImplemented
-  let (==) _ _ = raise NotImplemented
+  let (++) x y = 
+  match x, y with
+  | -1, -1 -> -1
+  | -1, _ -> y
+  | _, -1 -> x
+  | _, _ -> min x y
+  let ( ** ) x y = 
+  match x, y with
+    | -1, _ | _, -1 -> -1 
+    | _, _ -> x + y
+  let (==) x y = x == y
 end
 
 (* .. Write some code here .. *)
+module DistanceMat = MatrixFn (Distance)
+module DistanceMatClosure = ClosureFn (DistanceMat)
 
-let distance _ = raise NotImplemented
+let distance m = 
+  try
+    DistanceMat.to_list (DistanceMatClosure.closure (DistanceMat.create m))
+  with
+    DistanceMat.MatrixIllegal -> raise IllegalFormat
 
 let dl =
   [[  0;  -1;  -1;  -1;  -1;  -1 ];
