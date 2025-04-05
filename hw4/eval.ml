@@ -21,8 +21,7 @@
    match e with
    | Var x -> StringSet.singleton x
    | Lam (x, body) -> StringSet.diff (freeVars body) (StringSet.singleton x)
-   | App (e1, e2) -> StringSet.union (freeVars e1) 
-   (freeVars e2)
+   | App (e1, e2) -> StringSet.union (freeVars e1) (freeVars e2)
  
  let rec subst e' x e = 
    match e with
@@ -35,28 +34,28 @@
        let z = getFreshVariable y in
        let body' = subst (Var z) y body in
        Lam (z, subst e' x body')
+
+ let is_value e = 
+  match e with
+  | Var _ -> true
+  | Lam _ -> true
+  | _ -> false
+
  (*
   * implement a single step with reduction using the call-by-value strategy.
   *)
  let rec stepv e = 
-   match e with
-   | Var x -> raise Stuck
-   | Lam (x, body) -> raise Stuck
-   | App (e1, e2) -> 
-     try
-       let e1' = stepv e1 in 
-       App (e1', e2)
-     with Stuck -> 
-       match e1 with
-       | Lam (x, body) -> 
-         try
-           let e2' = stepv e2 in
-           App (e1, e2')
-         with Stuck ->
-           match e2 with
-           | Lam _ | Var _ -> subst e2 x body
-           | App _ -> raise Stuck
-       | _ -> raise Stuck
+  match e with
+  | Var _ -> raise Stuck
+  | Lam _ -> raise Stuck
+  | App (e1, e2) ->
+    if not (is_value e1) then App (stepv e1, e2)
+    else
+      match e1 with
+      | Lam (x, body) -> 
+        if not (is_value e2) then App (e1, stepv e2)
+        else subst e2 x body
+      | _ -> raise Stuck
 
  let stepOpt stepf e = try Some (stepf e) with Stuck -> None
  
