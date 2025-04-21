@@ -91,7 +91,85 @@ let texp2exp texp =
 
 (* Problem 2. 
  * step1 : Tml.exp -> Tml.exp *)   
-let rec step1 _ = raise Stuck
+let rec isValue e = 
+  match e with
+  | Lam _ | Num _ | True | False | Eunit -> true
+  | Pair (v1, v2) -> isValue v1 && isValue v2
+  | Inl v | Inr v -> isValue v
+  | _ -> false
+
+let rec shiftAbove d c e = 
+  match e with
+  | Ind k -> if k >= c then Ind (k+d) else Ind k
+  | Lam e1 -> Lam (shiftAbove d (c+1) e1)
+  | App (e1, e2) -> App (shiftAbove d c e1, shiftAbove d c e2)
+  | Pair (e1, e2) -> Pair (shiftAbove d c e1, shiftAbove d c e2)
+  | Fst e1 -> Fst (shiftAbove d c e1)
+  | Snd e1 -> Snd (shiftAbove d c e1)
+  | Eunit -> Eunit
+  | Inl e1 -> Inl (shiftAbove d c e1)
+  | Inr e1 -> Inr (shiftAbove d c e1)
+  | Case (e0, e1, e2) -> Case (shiftAbove d c e0, shiftAbove d (c+1) e1, shiftAbove d (c+1) e2)
+  | Fix e1 -> Fix (shiftAbove d (c+1) e1)
+  | Ifthenelse (e0, e1, e2) -> Ifthenelse (shiftAbove d c e0, shiftAbove d c e1, shiftAbove d c e2)
+  | True | False | Num _ | Plus | Minus | Eq -> e
+
+let shift d e = shiftAbove d 0 e
+
+let rec subst j v e = 
+  let rec sub c e = 
+    match e with
+    | Ind k -> 
+      if k = j + c then shift c v
+      else if k > j + c then Ind (k-1)
+      else Ind k
+    | Lam e1 -> Lam (sub (c+1) e1)
+    | App (e1, e2) -> App (sub c e1, sub c e2)
+    | Pair (e1, e2) -> Pair (sub c e1, sub c e2)
+    | Fst e1 -> Fst (sub c e1)
+    | Snd e1 -> Snd (sub c e1)
+    | Eunit -> Eunit
+    | Inl e1 -> Inl (sub c e1)
+    | Inr e1 -> Inr (sub c e1)
+    | Case (e0, e1, e2) -> Case (sub c e0, sub (c+1) e1, sub (c+1) e2)
+    | Fix e1 -> Fix (sub (c+1) e1)
+    | Ifthenelse (e0, e1, e2) -> Ifthenelse (sub c e0, sub c e1, sub c e2)
+    | True | False | Num _ | Plus | Minus | Eq -> e
+  in
+  sub 0 e
+    
+
+let rec step1 (e : exp) = 
+  match e with
+  | App (Lam e1, v2) when isValue v2 -> subst 0 v2 e1
+  | App (v1, e2) when isValue v1 -> App (v1, step1 e2)
+
+  | App (Plus, Pair (Num n1, Num n2)) -> Num (n1 + n2)
+  | App (Minus, Pair (Num n1, Num n2)) -> Num (n1 - n2)
+  | App (Eq, Pair (Num n1, Num n2)) -> if n1 = n2 then True else False
+
+  | App (e1, e2) -> App (step1 e1, e2)
+
+  | Pair (v1, e2) when isValue v1 -> Pair (v1, step1 e2)
+  | Pair (e1, e2) -> Pair (step1 e1, e2)
+
+  | Fst (Pair (v1, v2)) when isValue v1 && isValue v2 -> v1
+  | Fst e1 -> Fst (step1 e1)
+
+  | Snd (Pair (v1, v2)) when isValue v1 && isValue v2 -> v2
+  | Snd e1 -> Snd (step1 e1)
+
+  | Ifthenelse (True, e1, e2) -> e1
+  | Ifthenelse (False, e1, e2) -> e2
+  | Ifthenelse (e0, e1, e2) -> Ifthenelse (step1 e0, e1, e2)
+
+  | Case (Inl v, e1, _) when isValue v -> App (e1, v)
+  | Case (Inr v, _, e2) when isValue v -> App (e2, v)
+  | Case (e0, e1, e2) -> Case (step1 e0, e1, e2)
+
+  | Fix e1 -> App (e1, Fix e1)
+  
+  | _ -> raise Stuck
 
 (* Problem 3. 
  * step2 : state -> state *)
