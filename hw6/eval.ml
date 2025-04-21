@@ -16,16 +16,56 @@ type stoval =
    | Return_ST of (stoval Heap.heap) * stack * value 
 
  (* Define your own datatypes *)
- and env = NOT_IMPLEMENT_ENV
- and value = NOT_IMPLEMENT_VALUE
- and frame = NOT_IMPLEMENT_FRAME
+ and env = Heap.loc list
+
+ and value = 
+  | VLam of exp * env
+  | VFix of exp * env
+  | VNum of int
+  | VBool of bool
+  | VUnit
+  | VPair of value * value
+  | VInl of value
+  | VInr of value
+  | VPlus
+  | VMinus
+  | VEq
+
+ and frame = 
+  | AppL_FR of exp * env
+  | AppR_FR of Heap.loc
+  | Fst_FR
+  | Snd_FR
+  | If_FR of exp * exp * env
+  | Case_FR of exp * exp * env
+  | Fix_FR
+  | PlusArg_FR of Heap.loc
+  | MinusArg_FR of Heap.loc
+  | EqArg_FR of Heap.loc
+  | PairL_FR of exp * env
+  | PairR_FR of value
+  | Eval_FR of Heap.loc
+
 (* Define your own empty environment *)
-let emptyEnv = NOT_IMPLEMENT_ENV
+let emptyEnv = []
 
 (* Implement the function value2exp : value -> Tml.exp
  * Warning : If you give wrong implementation of this function,
  *           you wiil receive no credit for the entire third part!  *)
-let value2exp _ = raise NotImplemented
+let rec value2exp v = 
+  match v with
+  | VLam (e, _) -> Lam e
+  | VFix (e, _) -> Fix e
+  | VNum n -> Num n
+  | VBool true -> True
+  | VBool false -> False
+  | VUnit -> Eunit
+  | VPair (v1, v2) -> Pair (value2exp v1, value2exp v2)
+  | VInl v1 -> Inl (value2exp v1)
+  | VInr v2 -> Inr (value2exp v2)
+  | VPlus -> Plus
+  | VMinus -> Minus
+  | VEq -> Eq
 
 (* Problem 1. 
  * texp2exp : Tml.texp -> Tml.exp *)
@@ -168,13 +208,129 @@ let rec step1 (e : exp) =
   | Case (e0, e1, e2) -> Case (step1 e0, e1, e2)
 
   | Fix e1 -> App (e1, Fix e1)
-  
+
   | _ -> raise Stuck
 
 (* Problem 3. 
  * step2 : state -> state *)
-let step2 _ = raise Stuck
-                    
+let step2 st =
+match st with
+| Anal_ST (heap, stack, exp, env) -> begin
+    match exp with
+    | Ind x ->
+      let loc = List.nth env x in
+      (match Heap.deref heap loc with
+        | Computed v -> Return_ST (heap, stack, v)
+        | Delayed (e, env') -> Anal_ST (heap, Frame_SK (stack, Eval_FR loc), e, env'))
+
+    | Lam e -> Return_ST (heap, stack, VLam (e, env))
+    | Fix e -> Return_ST (heap, stack, VFix (e, env))
+
+    | Num n -> Return_ST (heap, stack, VNum n)
+    | True -> Return_ST (heap, stack, VBool true)
+    | False -> Return_ST (heap, stack, VBool false)
+    | Eunit -> Return_ST (heap, stack, VUnit)
+    | Plus -> Return_ST (heap, stack, VPlus)
+    | Minus -> Return_ST (heap, stack, VMinus)
+    | Eq -> Return_ST (heap, stack, VEq)
+
+    | App (e1, e2) -> Anal_ST (heap, Frame_SK (stack, AppL_FR (e2, env)), e1, env)
+    | Pair (e1, e2) -> Anal_ST (heap, Frame_SK (stack, PairL_FR (e2, env)), e1, env)
+    | Fst e -> Anal_ST (heap, Frame_SK (stack, Fst_FR), e, env)
+    | Snd e -> Anal_ST (heap, Frame_SK (stack, Snd_FR), e, env)
+
+    | Inl e -> Anal_ST (heap, Frame_SK (stack, AppL_FR (Inr Eunit, env)), e, env)
+    | Inr e -> Anal_ST (heap, Frame_SK (stack, AppL_FR (Inl Eunit, env)), e, env)
+    | Case (e, e1, e2) -> Anal_ST (heap, Frame_SK (stack, Case_FR (e1, e2, env)), e, env)
+
+    | Ifthenelse (e0, e1, e2) ->
+      Anal_ST (heap, Frame_SK (stack, If_FR (e1, e2, env)), e0, env)
+  end
+
+| Return_ST (heap, stack, value) -> begin
+    match stack with
+    | Hole_SK -> raise Stuck
+    | Frame_SK (stack', Eval_FR loc) -> 
+      let heap' = Heap.update heap loc (Computed value) in
+      Return_ST (heap', stack', value)
+
+    | Frame_SK (stack', Fst_FR) ->
+      (match value with VPair (v1, _) -> Return_ST (heap, stack', v1) | _ -> raise NotConvertible)
+
+    | Frame_SK (stack', Snd_FR) ->
+      (match value with VPair (_, v2) -> Return_ST (heap, stack', v2) | _ -> raise NotConvertible)
+
+    | Frame_SK (stack', AppL_FR (e2, env0)) ->
+      let (heap1, loc) = Heap.allocate heap (Delayed (e2, env0)) in
+      Return_ST (heap1, Frame_SK (stack', AppR_FR loc), value)
+
+    | Frame_SK (stack', AppR_FR loc) -> begin
+        match value with
+        | VLam (body, env') -> Anal_ST (heap, stack', body, loc :: env')
+        | VFix (Lam body, env') ->
+          let (heap1, self_loc) = Heap.allocate heap (Computed value) in
+          Anal_ST (heap1, stack', body, self_loc :: loc :: env')
+        | VPlus -> Anal_ST (heap, Frame_SK (stack', PlusArg_FR loc), Ind 0, [loc])
+        | VMinus -> Anal_ST (heap, Frame_SK (stack', MinusArg_FR loc), Ind 0, [loc])
+        | VEq -> Anal_ST (heap, Frame_SK (stack', EqArg_FR loc), Ind 0, [loc])
+        | _ -> raise NotConvertible
+      end
+
+    | Frame_SK (stack', Case_FR (e1, e2, env')) -> begin
+        match value with
+        | VInl v1 ->
+          let (heap1, loc) = Heap.allocate heap (Computed v1) in
+          Anal_ST (heap1, stack', e1, loc :: env')
+        | VInr v2 ->
+          let (heap1, loc) = Heap.allocate heap (Computed v2) in
+          Anal_ST (heap1, stack', e2, loc :: env')
+        | _ -> raise NotConvertible
+      end
+
+    | Frame_SK (stack', If_FR (e1, e2, env')) -> begin
+        match value with
+        | VBool true -> Anal_ST (heap, stack', e1, env')
+        | VBool false -> Anal_ST (heap, stack', e2, env')
+        | _ -> raise NotConvertible
+      end
+
+    | Frame_SK (stack', PlusArg_FR loc) -> begin
+        match Heap.deref heap loc with
+        | Computed (VPair (VNum n1, VNum n2)) ->
+            Return_ST (heap, stack', VNum (n1 + n2))
+        | Computed _ -> raise NotConvertible
+        | Delayed (e, env') ->
+            Anal_ST (heap, Frame_SK (stack', PlusArg_FR loc), e, env')
+      end
+
+    | Frame_SK (stack', MinusArg_FR loc) -> begin
+        match Heap.deref heap loc with
+        | Computed (VPair (VNum n1, VNum n2)) ->
+            Return_ST (heap, stack', VNum (n1 - n2))
+        | Computed _ -> raise NotConvertible
+        | Delayed (e, env') ->
+            Anal_ST (heap, Frame_SK (stack', MinusArg_FR loc), e, env')
+      end
+
+    | Frame_SK (stack', EqArg_FR loc) -> begin
+        match Heap.deref heap loc with
+        | Computed (VPair (VNum n1, VNum n2)) ->
+            Return_ST (heap, stack', VBool (n1 = n2))
+        | Computed _ -> raise NotConvertible
+        | Delayed (e, env') ->
+            Anal_ST (heap, Frame_SK (stack', EqArg_FR loc), e, env')
+      end
+    | Frame_SK (stack', PairL_FR (e2, env0)) -> 
+      Anal_ST (heap, Frame_SK (stack', PairR_FR value), e2, env0)
+  
+    | Frame_SK (stack', PairR_FR v1) -> 
+      Return_ST (heap, stack', VPair (v1, value))
+
+    | Frame_SK (_, Fix_FR) -> raise NotImplemented
+  end
+
+
+    
 (* exp2string : Tml.exp -> string *)
 let rec exp2string exp = 
   match exp with 
@@ -199,9 +355,12 @@ let rec exp2string exp =
 
 (* state2string : state -> string 
  * you may modify this function for debugging your code *)
-let state2string st = match st with
-    Anal_ST(_,_,exp,_) -> "Analysis : ???"
-  | Return_ST(_,_,_) -> "Return : ??? "
+ let state2string st =
+  match st with
+  | Anal_ST (_, _, exp, _) ->
+      "Analysis : " ^ exp2string exp
+  | Return_ST (_, _, v) ->
+      "Return : " ^ exp2string (value2exp v)
 
 (* ------------------------------------------------------------- *)     
 let stepOpt1 e = try Some (step1 e) with Stuck -> None
